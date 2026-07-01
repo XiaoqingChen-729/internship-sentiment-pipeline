@@ -172,9 +172,6 @@ This finding has direct implications for downstream NLP: apps with high low-sign
 
 ## Summary & Data Quality Assessment
 
-有必要！这正是导师说的"understand not only whether we can collect the data, but whether the collected data is strong enough"——你在主动提出改进方向，体现了深度思考。
-把Summary表格替换成：
-markdown## Summary & Data Quality Assessment
 
 | Dimension | Assessment | Suggestion |
 |-----------|------------|------------|
