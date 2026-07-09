@@ -10,16 +10,15 @@
 --                low_signal, is_duplicate, is_english,
 --                cleaned_at
 
-
 -- 1. CATEGORY
 CREATE TABLE category (
-    id          INT           PRIMARY KEY AUTO_INCREMENT,
+    id          SERIAL        PRIMARY KEY,
     name        VARCHAR(100)  NOT NULL UNIQUE
 );
 
 -- 2. APP
 CREATE TABLE app (
-    id            INT           PRIMARY KEY AUTO_INCREMENT,
+    id            SERIAL        PRIMARY KEY,
     name          VARCHAR(100)  NOT NULL,
     app_store_id  VARCHAR(100)  NOT NULL UNIQUE,
     category_id   INT           NOT NULL,
@@ -28,7 +27,7 @@ CREATE TABLE app (
 
 -- 3. INGESTION_RUN
 CREATE TABLE ingestion_run (
-    id          INT          PRIMARY KEY AUTO_INCREMENT,
+    id          SERIAL       PRIMARY KEY,
     app_id      INT          NOT NULL,
     run_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     count       INT          NOT NULL DEFAULT 0,
@@ -53,7 +52,7 @@ CREATE TABLE raw_review (
 
 -- 5. QUALITY_FLAG
 CREATE TABLE quality_flag (
-    id          INT           PRIMARY KEY AUTO_INCREMENT,
+    id          SERIAL        PRIMARY KEY,
     review_id   VARCHAR(100)  NOT NULL,
     flag_type   VARCHAR(50)   NOT NULL
                               CHECK (flag_type IN ('low_signal', 'duplicate', 'non_english', 'template')),
@@ -63,7 +62,7 @@ CREATE TABLE quality_flag (
 
 -- 6. CLEANED_REVIEW
 CREATE TABLE cleaned_review (
-    id               INT           PRIMARY KEY AUTO_INCREMENT,
+    id               SERIAL        PRIMARY KEY,
     review_id        VARCHAR(100)  NOT NULL UNIQUE,
     cleaned_content  TEXT,
     language         VARCHAR(10),
