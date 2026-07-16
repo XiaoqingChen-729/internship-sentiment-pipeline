@@ -6,6 +6,8 @@ import time
 
 load_dotenv()
 
+start_time = time.time()
+
 # Database connection
 def get_connection():
     return psycopg2.connect(
@@ -60,19 +62,18 @@ def create_ingestion_run(cur, app_id, count, status):
 def insert_reviews(cur, result, ingestion_run_id):
     inserted = 0
     duplicate = 0
+    flag_count = 0
     seen_content = set()
 
     for r in result:
         review_id = r.get('reviewId', '')
         content = r.get('content') or ''
 
-        # Check duplicate review_id
         cur.execute("SELECT review_id FROM raw_review WHERE review_id = %s", (review_id,))
         if cur.fetchone():
             duplicate += 1
             continue
 
-        # Insert raw_review
         cur.execute("""
             INSERT INTO raw_review (
                 review_id, ingestion_run_id, user_name, content,
@@ -90,12 +91,12 @@ def insert_reviews(cur, result, ingestion_run_id):
             r.get('replyContent')
         ))
 
-        # Quality flags
         flags = get_quality_flags(content)
 
-        # Check duplicate content
-        if content in seen_content:
+        is_content_duplicate = content in seen_content
+        if is_content_duplicate:
             flags.append(('duplicate', 'Identical content already seen in this run'))
+
         seen_content.add(content)
 
         for flag_type, reason in flags:
@@ -103,11 +104,10 @@ def insert_reviews(cur, result, ingestion_run_id):
                 INSERT INTO quality_flag (review_id, flag_type, reason)
                 VALUES (%s, %s, %s)
             """, (review_id, flag_type, reason))
+            flag_count += 1
 
-        # Insert cleaned_review
         is_english = sum(1 for c in content if ord(c) < 128) / max(len(content), 1) >= 0.8
         low_signal = len(content.strip()) < 20
-        is_duplicate = content in seen_content
 
         cur.execute("""
             INSERT INTO cleaned_review (
@@ -119,28 +119,56 @@ def insert_reviews(cur, result, ingestion_run_id):
             content.strip(),
             'en' if is_english else 'other',
             low_signal,
-            is_duplicate,
+            is_content_duplicate,
             is_english
         ))
 
         inserted += 1
 
-    return inserted, duplicate
+    return inserted, duplicate, flag_count
 
-# Main pipeline (choose 5 apps for testing)
+# Main pipeline
 apps = [
-    {'id': 'com.ubercab',               'name': 'Uber',         'category': 'Ride-hailing'},
-    {'id': 'com.dd.doordash',           'name': 'DoorDash',     'category': 'Food Delivery'},
-    {'id': 'com.spotify.music',         'name': 'Spotify',      'category': 'Music'},
-    {'id': 'com.duolingo',              'name': 'Duolingo',      'category': 'Education'},
-    {'id': 'com.zhiliaoapp.musically',  'name': 'TikTok',       'category': 'Social'},
+    {'id': 'com.openai.chatgpt',                'name': 'ChatGPT',          'category': 'AI'},
+    {'id': 'com.instagram.android',             'name': 'Instagram',        'category': 'Social'},
+    {'id': 'com.zhiliaoapp.musically',          'name': 'TikTok',           'category': 'Short Video'},
+    {'id': 'com.lemon.lvoverseas',              'name': 'CapCut',           'category': 'Video Editing'},
+    {'id': 'com.whatsapp',                      'name': 'WhatsApp',         'category': 'Communication'},
+    {'id': 'com.facebook.katana',               'name': 'Facebook',         'category': 'Social'},
+    {'id': 'com.spotify.music',                 'name': 'Spotify',          'category': 'Music'},
+    {'id': 'com.einnovation.temu',              'name': 'Temu',             'category': 'Shopping'},
+    {'id': 'com.snapchat.android',              'name': 'Snapchat',         'category': 'Social'},
+    {'id': 'org.telegram.messenger',            'name': 'Telegram',         'category': 'Communication'},
+    {'id': 'com.netflix.mediaclient',           'name': 'Netflix',          'category': 'Streaming'},
+    {'id': 'com.duolingo',                      'name': 'Duolingo',         'category': 'Education'},
+    {'id': 'com.google.android.apps.maps',      'name': 'Google Maps',      'category': 'Navigation'},
+    {'id': 'com.ubercab',                       'name': 'Uber',             'category': 'Ride-hailing'},
+    {'id': 'com.dd.doordash',                   'name': 'DoorDash',         'category': 'Food Delivery'},
+    {'id': 'com.google.android.apps.bard',      'name': 'Google Gemini',    'category': 'AI'},
+    {'id': 'com.amazon.mShop.android.shopping', 'name': 'Amazon Shopping',  'category': 'E-commerce'},
+    {'id': 'com.mcdonalds.app',                 'name': 'McDonalds',        'category': 'Food & Drink'},
+    {'id': 'com.linkedin.android',              'name': 'LinkedIn',         'category': 'Professional'},
+    {'id': 'com.airbnb.android',                'name': 'Airbnb',           'category': 'Travel'},
 ]
 
 conn = get_connection()
 cur = conn.cursor()
 
+app_report = []
+total_inserted = 0
+total_skipped = 0
+total_flags = 0
+
 for app in apps:
     print(f"Processing: {app['name']}...")
+    report = {
+        'app': app['name'],
+        'fetched': 0,
+        'inserted': 0,
+        'skipped': 0,
+        'flags': 0,
+        'status': 'success'
+    }
 
     try:
         result, _ = reviews(
@@ -148,25 +176,90 @@ for app in apps:
             lang='en',
             country='us',
             sort=Sort.NEWEST,
-            count=100
+            count=1000
         )
-        status = 'success'
+        report['fetched'] = len(result)
+        report['status'] = 'success'
     except Exception as e:
         print(f"  Failed to fetch: {e}")
-        status = 'failed'
+        report['status'] = 'failed'
         result = []
 
     category_id = get_or_create_category(cur, app['category'])
     app_id = get_or_create_app(cur, app['name'], app['id'], category_id)
-    run_id = create_ingestion_run(cur, app_id, len(result), status)
+    run_id = create_ingestion_run(cur, app_id, len(result), report['status'])
 
     if result:
-        inserted, duplicate = insert_reviews(cur, result, run_id)
-        print(f"  Inserted: {inserted} | Duplicates skipped: {duplicate}")
+        inserted, skipped, flags = insert_reviews(cur, result, run_id)
+        report['inserted'] = inserted
+        report['skipped'] = skipped
+        report['flags'] = flags
+        total_inserted += inserted
+        total_skipped += skipped
+        total_flags += flags
+        print(f"  Fetched: {report['fetched']} | Inserted: {inserted} | Skipped: {skipped} | Flags: {flags}")
 
+    cur.execute("""
+        UPDATE ingestion_run 
+        SET finished_at = CURRENT_TIMESTAMP 
+        WHERE id = %s
+    """, (run_id,))
     conn.commit()
+    app_report.append(report)
     time.sleep(1)
+
+# Summary report
+elapsed = time.time() - start_time
+
+print("\n" + "=" * 60)
+print("PIPELINE SUMMARY")
+print("=" * 60)
+print(f"Total fetched  : {sum(r['fetched'] for r in app_report):,}")
+print(f"Total inserted : {total_inserted:,}")
+print(f"Total skipped  : {total_skipped:,}")
+print(f"Total flags    : {total_flags:,}")
+print(f"Runtime        : {elapsed:.1f} seconds")
+
+print("\nQuality flags by type:")
+cur.execute("""
+    SELECT flag_type, COUNT(*) 
+    FROM quality_flag 
+    GROUP BY flag_type 
+    ORDER BY COUNT(*) DESC
+""")
+for flag_type, count in cur.fetchall():
+    print(f"  {flag_type}: {count:,}")
+
+print("\nFailed apps:")
+failed = [r for r in app_report if r['status'] == 'failed']
+if failed:
+    for r in failed:
+        print(f"  {r['app']}")
+else:
+    print("  None")
+
+print("\nTable validation:")
+cur.execute("SELECT COUNT(*) FROM raw_review")
+raw_count = cur.fetchone()[0]
+cur.execute("SELECT COUNT(*) FROM cleaned_review")
+cleaned_count = cur.fetchone()[0]
+cur.execute("""
+    SELECT COUNT(*) FROM raw_review r
+    LEFT JOIN ingestion_run i ON r.ingestion_run_id = i.id
+    WHERE i.id IS NULL
+""")
+orphan_count = cur.fetchone()[0]
+print(f"  raw_review count     : {raw_count:,}")
+print(f"  cleaned_review count : {cleaned_count:,}")
+print(f"  raw == cleaned       : {raw_count == cleaned_count}")
+print(f"  orphan reviews       : {orphan_count}")
+
+print("\nPer-app report:")
+print(f"  {'App':<20} {'Fetched':>8} {'Inserted':>9} {'Skipped':>8} {'Flags':>6} {'Status':>8}")
+print(f"  {'-'*20} {'-'*8} {'-'*9} {'-'*8} {'-'*6} {'-'*8}")
+for r in app_report:
+    print(f"  {r['app']:<20} {r['fetched']:>8} {r['inserted']:>9} {r['skipped']:>8} {r['flags']:>6} {r['status']:>8}")
 
 cur.close()
 conn.close()
-print("\nPipeline complete.")
+print("\nPipeline completed.")
