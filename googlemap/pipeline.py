@@ -187,6 +187,7 @@ for app in apps:
 
     category_id = get_or_create_category(cur, app['category'])
     app_id = get_or_create_app(cur, app['name'], app['id'], category_id)
+    run_start = time.time()
     run_id = create_ingestion_run(cur, app_id, len(result), report['status'])
 
     if result:
@@ -199,11 +200,15 @@ for app in apps:
         total_flags += flags
         print(f"  Fetched: {report['fetched']} | Inserted: {inserted} | Skipped: {skipped} | Flags: {flags}")
 
+    run_end = time.time()
     cur.execute("""
         UPDATE ingestion_run 
-        SET finished_at = CURRENT_TIMESTAMP 
+        SET finished_at = run_at + interval '1 second' * %s
         WHERE id = %s
-    """, (run_id,))
+    """, (round(run_end - run_start), run_id))
+    conn.commit()
+    app_report.append(report)
+    time.sleep(1)
     conn.commit()
     app_report.append(report)
     time.sleep(1)
