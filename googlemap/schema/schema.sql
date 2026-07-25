@@ -4,7 +4,8 @@
 -- ingestion_run  id, app_id, run_at, count, status
 -- raw_review     review_id, ingestion_run_id, user_name,
 --                content, score, reviewed_at, app_version,
---                thumbs_up_count, reply_content
+--                thumbs_up_cou
+、nt, reply_content
 -- quality_flag   id, review_id, flag_type, reason
 -- cleaned_review id, review_id, cleaned_content, language,
 --                low_signal, is_duplicate, is_english,
@@ -28,6 +29,7 @@ CREATE TABLE app (
 -- 3. INGESTION_RUN
 CREATE TABLE ingestion_run (
     id          SERIAL       PRIMARY KEY,
+    batch_id    VARCHAR(50),
     app_id      INT          NOT NULL,
     run_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     finished_at TIMESTAMP,

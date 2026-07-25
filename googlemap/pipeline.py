@@ -3,8 +3,10 @@ import psycopg2
 from dotenv import load_dotenv
 from google_play_scraper import reviews, Sort
 import time
+from datetime import datetime
 
 load_dotenv()
+batch_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 start_time = time.time()
 
@@ -51,10 +53,10 @@ def get_or_create_app(cur, name, app_store_id, category_id):
     return cur.fetchone()[0]
 
 # Insert ingestion run
-def create_ingestion_run(cur, app_id, count, status):
+def create_ingestion_run(cur, app_id, count, status, batch_id):
     cur.execute(
-        "INSERT INTO ingestion_run (app_id, count, status) VALUES (%s, %s, %s) RETURNING id",
-        (app_id, count, status)
+        "INSERT INTO ingestion_run (batch_id, app_id, count, status) VALUES (%s, %s, %s, %s) RETURNING id",
+        (batch_id, app_id, count, status)
     )
     return cur.fetchone()[0]
 
@@ -170,6 +172,8 @@ for app in apps:
         'status': 'success'
     }
 
+    run_start = time.time()
+
     try:
         result, _ = reviews(
             app['id'],
@@ -178,6 +182,8 @@ for app in apps:
             sort=Sort.NEWEST,
             count=1000
         )
+        if not result:
+            raise Exception("No reviews returned — app ID may be invalid")
         report['fetched'] = len(result)
         report['status'] = 'success'
     except Exception as e:
@@ -187,8 +193,7 @@ for app in apps:
 
     category_id = get_or_create_category(cur, app['category'])
     app_id = get_or_create_app(cur, app['name'], app['id'], category_id)
-    run_start = time.time()
-    run_id = create_ingestion_run(cur, app_id, len(result), report['status'])
+    run_id = create_ingestion_run(cur, app_id, len(result), report['status'], batch_id)
 
     if result:
         inserted, skipped, flags = insert_reviews(cur, result, run_id)
@@ -206,9 +211,6 @@ for app in apps:
         SET finished_at = run_at + interval '1 second' * %s
         WHERE id = %s
     """, (round(run_end - run_start), run_id))
-    conn.commit()
-    app_report.append(report)
-    time.sleep(1)
     conn.commit()
     app_report.append(report)
     time.sleep(1)

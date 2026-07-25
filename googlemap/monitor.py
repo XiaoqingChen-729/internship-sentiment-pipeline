@@ -26,10 +26,10 @@ def get_latest_run_summary(cur):
             EXTRACT(EPOCH FROM (i.finished_at - i.run_at)) AS runtime_seconds
         FROM ingestion_run i
         JOIN app a ON i.app_id = a.id
-        WHERE i.id IN (
-            SELECT id FROM ingestion_run 
+        WHERE i.batch_id = (
+            SELECT batch_id FROM ingestion_run 
             ORDER BY run_at DESC 
-            LIMIT 20
+            LIMIT 1
         )
         ORDER BY a.name
     """)
@@ -43,10 +43,10 @@ def get_flag_summary(cur):
         FROM quality_flag qf
         JOIN raw_review r ON qf.review_id = r.review_id
         JOIN ingestion_run i ON r.ingestion_run_id = i.id
-        WHERE i.id IN (
-            SELECT id FROM ingestion_run 
+        WHERE i.batch_id = (
+            SELECT batch_id FROM ingestion_run 
             ORDER BY run_at DESC 
-            LIMIT 20
+            LIMIT 1
         )
         GROUP BY qf.flag_type
         ORDER BY count DESC
@@ -57,10 +57,10 @@ def get_db_growth(cur):
     cur.execute("""
         SELECT COUNT(*) FROM raw_review r
         JOIN ingestion_run i ON r.ingestion_run_id = i.id
-        WHERE i.id IN (
-            SELECT id FROM ingestion_run 
+        WHERE i.batch_id = (
+            SELECT batch_id FROM ingestion_run 
             ORDER BY run_at DESC 
-            LIMIT 20
+            LIMIT 1
         )
     """)
     return cur.fetchone()[0]
@@ -97,13 +97,13 @@ def determine_health(runs, flag_summary, orphans, raw, cleaned):
 
     # Check flag rates
     total_reviewed = sum(r[4] for r in runs)
-    flag_counts = {f[0]: f[1] for f in flag_summary}
+    flag_counts = {f[0]: f[1] for f in flag_summary}  
     low_signal_rate = flag_counts.get('low_signal', 0) / max(total_reviewed, 1)
     duplicate_rate = flag_counts.get('duplicate', 0) / max(total_reviewed, 1)
 
     if low_signal_rate > 0.6:
         warnings.append(f"High low-signal rate: {low_signal_rate:.1%}")
-    if duplicate_rate > 0.3:
+    if duplicate_rate > 0.1:
         warnings.append(f"High duplicate rate: {duplicate_rate:.1%}")
 
     # Check for apps with no finished_at
