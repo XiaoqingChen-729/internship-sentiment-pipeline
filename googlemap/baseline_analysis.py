@@ -104,6 +104,19 @@ X_train, X_test, y_train, y_test = train_test_split(
 print(f"\nTrain size: {len(X_train):,}")
 print(f"Test size:  {len(X_test):,}")
 
+# ── Majority class baseline ────────────────────────────────────
+from sklearn.dummy import DummyClassifier
+
+print("\nMajority Class Baseline:")
+print("-" * 40)
+dummy = DummyClassifier(strategy='most_frequent', random_state=42)
+dummy.fit(X_train, y_train)
+y_dummy = dummy.predict(X_test)
+
+dummy_macro_f1 = f1_score(y_test, y_dummy, average='macro')
+print(classification_report(y_test, y_dummy, digits=3, zero_division=0))
+print(f"Majority Class Macro F1: {dummy_macro_f1:.3f}")
+
 # ── Train model ────────────────────────────────────────────────
 print("\nTraining Logistic Regression...")
 model = LogisticRegression(
@@ -147,6 +160,11 @@ df_test['correct'] = df_test['label'] == df_test['predicted']
 
 errors = df_test[~df_test['correct']]
 print(f"Total errors: {len(errors):,} ({len(errors)/len(df_test)*100:.1f}%)")
+
+no_signal_errors = errors[
+    (~errors['positive_signal']) & (~errors['negative_signal'])
+]
+print(f"Errors with no keyword signals: {len(no_signal_errors):,} ({len(no_signal_errors)/len(errors)*100:.1f}%)")
 
 print("\nError distribution by true label:")
 err_dist = errors['label'].value_counts()
