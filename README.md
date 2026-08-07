@@ -157,7 +157,7 @@ features provide useful signal for sentiment classification.
 | Logistic Regression | 0.491 |
 
 The Logistic Regression model achieves 1.87x the Macro F1 of the majority
-class baseline, confirming that the engineered features carry meaningful signal.
+class baseline, suggesting that the engineered features carry meaningful signal.
 Performance is strongest on positive reviews (F1=0.777) and weakest on neutral
 reviews (F1=0.111), which represent only 4.4% of the dataset.
 
